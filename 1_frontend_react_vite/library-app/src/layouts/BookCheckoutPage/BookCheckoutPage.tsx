@@ -8,221 +8,68 @@ import ReviewModel from "src/models/ReviewModel";
 import { LatestReview } from "./LatestReviews";
 import { useOktaAuth } from "@okta/okta-react";
 import ReviewRequestModel from "src/models/ReviewRequest";
+import { useDispatch, useSelector } from "react-redux";
+import { AppDispatch, RootState } from "src/stores/store";
+import {
+  fetchBook,
+  fetchBookReviews,
+  isUserReviewBook,
+  isBookCheckedOut,
+  fetchUserCurrentLoansCount,
+  setIsReviewLeft,
+  setIsCheckedOut,
+  setDisplayError,
+} from "src/stores/bookCheckoutSlice";
 
 export const BookCheckoutPage = () => {
   const { authState } = useOktaAuth();
-
-  const [book, setBook] = useState<BookModel>();
-  const [isLoading, setIsLoading] = useState(true);
-  const [httpError, setHttpError] = useState<any>(null);
-
-  // review state
-  const [reviews, setReviews] = useState<ReviewModel[]>([]);
-  const [totalStarts, setTotalStars] = useState(0);
-  const [isLoadingReview, setIsLoadingReview] = useState(true);
-  const [isReviewLeft, setIsReviewLeft] = useState(false);
-  const [isLoadingUserReview, setIsLoadingUserReview] = useState(true);
-
-  // loans count state
-  const [currentLoansCount, setCurrentLoansCount] = useState(0);
-  const [isLoadingCurrentLoansCount, setIsLoadingCurrentLoansCount] =
-    useState(true);
-
-  // is book check out ?
-  const [isCheckedOut, setIsCheckedOut] = useState(false);
-  const [isLoadingBookCheckedOut, setIsLoadingBookCheckedOut] = useState(true);
-
-  // payment
-  const [displayError, setDisplayError] = useState(false);
-
-  // get path parameter out of url
-  // const bookId = window.location.pathname.split("/")[2];
   const { bookId } = useParams<{ bookId: string }>();
 
-  // fetch book data
+  const dispatch = useDispatch<AppDispatch>();
+  const {
+    book,
+    reviews,
+    totalStars,
+    isLoading,
+    error,
+    isLoadingReview,
+    isReviewLeft,
+    isCheckedOut,
+    isLoadingUserReview,
+    isLoadingBookCheckedOut,
+    isLoadingCurrentLoansCount,
+    currentLoansCount,
+    displayError,
+  } = useSelector((state: RootState) => state.bookCheckout);
+
+  // fetch single boook - redux
   useEffect(() => {
-    const fetchBook = async () => {
-      try {
-        const baseUrl: string = `${import.meta.env.VITE_REACT_APP_API}/books/${bookId}`;
+    if (bookId) {
+      dispatch(fetchBook(bookId));
+    }
+  }, [bookId, dispatch, isCheckedOut]);
 
-        const response = await fetch(baseUrl);
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const responseJson = await response.json();
-
-        const loadedBooks: BookModel = {
-          id: responseJson.id,
-          title: responseJson.title,
-          author: responseJson.author,
-          description: responseJson.description,
-          copies: responseJson.copies,
-          copiesAvailable: responseJson.copiesAvailable,
-          category: responseJson.category,
-          img: responseJson.img,
-        };
-
-        setBook(loadedBooks);
-      } catch (err) {
-        setHttpError(
-          err instanceof Error ? err.message : "An unknown error occurred",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchBook();
-  }, [isCheckedOut]);
-
-  // fetch reviews data
+  // fetch book reviews - redux
   useEffect(() => {
-    const fetchBookReviews = async () => {
-      try {
-        const reviewUrl: string = `${import.meta.env.VITE_REACT_APP_API}/reviews/search/findByBookId?bookId=${bookId}`;
-        const responseReviews = await fetch(reviewUrl);
+    if (bookId) {
+      dispatch(fetchBookReviews(bookId));
+    }
+  }, [bookId, dispatch, isReviewLeft]);
 
-        if (!responseReviews.ok) {
-          throw new Error(`HTTP error! status: ${responseReviews.status}`);
-        }
-
-        const responseJsonReviews = await responseReviews.json();
-        const responseData = responseJsonReviews._embedded.reviews;
-        let weightedStarReviews: number = 0;
-
-        const loadedReviews: ReviewModel[] = responseData.map((review: any) => {
-          weightedStarReviews += review.rating;
-          return {
-            id: review.id,
-            userEmail: review.userEmail,
-            date: review.date,
-            rating: review.rating,
-            book_id: review.bookId,
-            reviewDescription: review.reviewDescription,
-          };
-        });
-
-        if (loadedReviews) {
-          const round = (
-            Math.round((weightedStarReviews / loadedReviews.length) * 2) / 2
-          ).toFixed(1);
-          setTotalStars(Number(round));
-        }
-
-        setReviews(loadedReviews);
-      } catch (err) {
-        setHttpError(
-          err instanceof Error ? err.message : "An unknown error occurred",
-        );
-      } finally {
-        setIsLoadingReview(false);
-      }
-    };
-
-    fetchBookReviews();
-  }, [isReviewLeft]);
-
-  // is user review left ？
+  // is user review left ？- redux
   useEffect(() => {
-    const fetchUserReviewBook = async () => {
-      try {
-        if (authState && authState.isAuthenticated) {
-          const url = `${import.meta.env.VITE_REACT_APP_API}/reviews/secure/user/book/?bookId=${bookId}`;
+    dispatch(isUserReviewBook({ bookId, authState }));
+  }, [authState, dispatch, bookId]);
 
-          const requestOpetion = {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${authState.accessToken?.accessToken}`,
-              "Content-Type": "application/json",
-            },
-          };
-
-          const userReview = await fetch(url, requestOpetion);
-          if (!userReview.ok) {
-            throw new Error(`HTTP error! status: ${userReview.status}`);
-          }
-
-          const userReviewResponseJson = await userReview.json();
-          setIsReviewLeft(userReviewResponseJson);
-        }
-      } catch (err) {
-        setHttpError(
-          err instanceof Error ? err.message : "An unknown error occurred",
-        );
-      } finally {
-        setIsLoadingUserReview(false);
-      }
-    };
-    fetchUserReviewBook();
-  }, [authState]);
-
-  // fetch the number of checked book
+  // fetch the number of checked book of users
   useEffect(() => {
-    const fetchUserCurrentLoansCount = async () => {
-      try {
-        if (authState && authState.isAuthenticated) {
-          const url = `${import.meta.env.VITE_REACT_APP_API}/books/secure/currentloans/count`;
-          const requestOptions = {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${authState?.accessToken?.accessToken}`,
-              "Content-Type": "application/json",
-            },
-          };
-
-          const currentLoansCountResponse = await fetch(url, requestOptions);
-          if (!currentLoansCountResponse.ok) {
-            throw new Error("Something went wrong!");
-          }
-
-          const currentLoansCountResponseJson =
-            await currentLoansCountResponse.json();
-          setCurrentLoansCount(currentLoansCountResponseJson);
-        }
-      } catch (err) {
-        setHttpError(
-          err instanceof Error ? err.message : "An unknown error occurred",
-        );
-      } finally {
-        setIsLoadingCurrentLoansCount(false);
-      }
-    };
-    fetchUserCurrentLoansCount();
+    dispatch(fetchUserCurrentLoansCount({ authState }));
   }, [authState, isCheckedOut]);
 
-  // fetch is the book checked out ?
+  // is the book checked out ? - redux
   useEffect(() => {
-    const fetchUserCheckedOutBook = async () => {
-      try {
-        if (authState && authState.isAuthenticated) {
-          const url = `${import.meta.env.VITE_REACT_APP_API}/books/secure/ischeckedout/byuser/?bookId=${bookId}`;
-          const requestOptions = {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${authState.accessToken?.accessToken}`,
-              "Content-Type": "application/json",
-            },
-          };
-
-          const bookCheckedOut = await fetch(url, requestOptions);
-          if (!bookCheckedOut.ok) {
-            throw new Error("Something went wrong!");
-          }
-
-          const bookCheckedOutResponseJson = await bookCheckedOut.json();
-          setIsCheckedOut(bookCheckedOutResponseJson);
-        }
-      } catch (err) {
-        setHttpError(
-          err instanceof Error ? err.message : "An unknown error occurred",
-        );
-      } finally {
-        setIsLoadingBookCheckedOut(false);
-      }
-    };
-    fetchUserCheckedOutBook();
-  }, [authState]);
+    dispatch(isBookCheckedOut({ bookId, authState }));
+  }, [authState, dispatch, bookId]);
 
   if (
     isLoading ||
@@ -234,10 +81,10 @@ export const BookCheckoutPage = () => {
     return <SpinnerLoading />;
   }
 
-  if (httpError) {
+  if (error) {
     return (
       <div className="min-w-screen min-h-screen bg-white text-center text-2xl text-cyan-700">
-        <p>{httpError}</p>
+        <p>{error}</p>
       </div>
     );
   }
@@ -254,11 +101,11 @@ export const BookCheckoutPage = () => {
     };
     const checkoutResponse = await fetch(url, requestOptions);
     if (!checkoutResponse.ok) {
-      setDisplayError(true);
+      dispatch(setDisplayError(true));
       throw new Error("Something went wrong!");
     }
-    setDisplayError(false);
-    setIsCheckedOut(true);
+    dispatch(setDisplayError(false));
+    dispatch(setIsCheckedOut(true));
   }
 
   async function submitReview(starInput: number, reviewDescription: string) {
@@ -285,8 +132,10 @@ export const BookCheckoutPage = () => {
     if (!returnResponse.ok) {
       throw new Error("Something went wrong!");
     }
-    setIsReviewLeft(true);
+    dispatch(setIsReviewLeft(true));
   }
+
+  console.log(displayError);
 
   return (
     <div className="mb-[2rem] flex w-full flex-col items-center">
@@ -324,7 +173,7 @@ export const BookCheckoutPage = () => {
           <p className="text-justify text-sm lg:h-[20rem] lg:w-[25rem] lg:overflow-scroll lg:text-base">
             {book?.description}
           </p>
-          <StarsReview rating={totalStarts} size={32} />
+          <StarsReview rating={totalStars} size={32} />
         </div>
         {/* checkout and review box */}
         <CheckoutAndReviewBox

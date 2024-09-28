@@ -1,4 +1,4 @@
-import { useReducer } from "react";
+import { useEffect } from "react";
 import BookModel from "src/models/BookModel";
 import { SpinnerLoading } from "../Utils/SpinnerLoading";
 import {
@@ -12,61 +12,69 @@ import {
 import { SearchBook } from "./components/SearchBook";
 import { Pagination } from "../Utils/Pagination";
 import { Button } from "src/components/ui/button";
-import { useBooks } from "src/hooks/useBooks";
-import { initialState, reducer } from "src/hooks/booksReducer";
+import { useDispatch, useSelector } from "react-redux";
+import { AppDispatch, RootState } from "src/stores/store";
+import {
+  fetchBooks,
+  setPage,
+  setSearch,
+  setSearchUrl,
+  setCategory,
+  resetSearch,
+} from "src/stores/booksSlice";
 
 export const SearchBooksPage = () => {
-  const [state, dispatch] = useReducer(reducer, initialState);
-  const { currentPage, booksPerPage, search, searchUrl, categorySelection } =
-    state;
+  const dispatch = useDispatch<AppDispatch>();
+  const {
+    books,
+    isLoading,
+    error,
+    currentPage,
+    booksPerPage,
+    totalAmountOfBooks,
+    totalPages,
+    search,
+    searchUrl,
+    categorySelection,
+  } = useSelector((state: RootState) => state.books);
 
-  // custom hook - fetch data
-  const { books, isLoading, httpError, totalAmountOfBooks, totalPages } =
-    useBooks(currentPage, booksPerPage, searchUrl);
+  useEffect(() => {
+    dispatch(fetchBooks({ currentPage, booksPerPage, searchUrl }));
+  }, [dispatch, currentPage, booksPerPage, searchUrl]);
 
   if (isLoading) {
     return <SpinnerLoading />;
   }
 
-  if (httpError) {
+  if (error) {
     return (
       <div className="min-w-screen min-h-screen bg-white text-center text-2xl text-cyan-700">
-        <p>{httpError}</p>
+        <p>{error}</p>
       </div>
     );
   }
 
-  const paginate = (pageNumber: number) => {
-    dispatch({ type: "SET_PAGE", payload: pageNumber });
-  };
-
-  const searchHandleChange = () => {
-    dispatch({ type: "SET_PAGE", payload: 1 });
+  const handleSearch = () => {
+    dispatch(setPage(1));
     if (search === "") {
-      dispatch({ type: "SET_SEARCH_URL", payload: "" });
+      dispatch(setSearchUrl(""));
     } else {
       const url = `/search/findByTitleContaining?title=${search}&page=<pageNumber>&size=${booksPerPage}`;
-      dispatch({ type: "SET_SEARCH_URL", payload: url });
+      dispatch(setSearchUrl(url));
     }
-
-    dispatch({ type: "SET_CATEGORY", payload: "Book category" });
+    dispatch(setCategory("Book category"));
   };
 
-  const categoryField = (value: string) => {
-    dispatch({ type: "RESET_SEARCH" });
-    if (
-      value.toLocaleLowerCase() === "fe" ||
-      value.toLocaleLowerCase() === "be" ||
-      value.toLocaleLowerCase() === "data" ||
-      value.toLocaleLowerCase() === "devops"
-    ) {
+  const handleCategorySelection = (value: string) => {
+    dispatch(resetSearch());
+    if (["fe", "be", "data", "devops"].includes(value.toLowerCase())) {
       const url = `/search/findByCategory?category=${value}&page=<pageNumber>&size=${booksPerPage}`;
-      dispatch({ type: "SET_CATEGORY", payload: value });
-      dispatch({ type: "SET_SEARCH_URL", payload: url });
+      dispatch(setCategory(value));
+      dispatch(setSearchUrl(url));
     } else {
       const url = `?page=<pageNumber>&size=${booksPerPage}`;
-      dispatch({ type: "SET_CATEGORY", payload: "All" });
-      dispatch({ type: "SET_SEARCH_URL", payload: url });
+      dispatch(setCategory("All"));
+      dispatch(setSearchUrl(url));
     }
   };
 
@@ -87,13 +95,11 @@ export const SearchBooksPage = () => {
             placeholder="Search"
             value={search}
             className="h-8 min-w-[40px] flex-1 rounded-md border border-gray-400 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 sm:text-sm"
-            onChange={(e) =>
-              dispatch({ type: "SET_SEARCH", payload: e.target.value })
-            }
+            onChange={(e) => dispatch(setSearch(e.target.value))}
           />
           <button
             className="h-8 rounded-md bg-cyan-700 px-2 py-1 text-xs text-white hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 sm:text-sm"
-            onClick={() => searchHandleChange()}
+            onClick={handleSearch}
           >
             Search
           </button>
@@ -108,31 +114,31 @@ export const SearchBooksPage = () => {
               <NavigationMenuContent className="flex min-w-[150px] flex-col justify-center space-y-2 rounded-md bg-white p-4 text-xs shadow-lg sm:text-sm">
                 <NavigationMenuLink
                   className="rounded-md px-2 py-1 hover:bg-gray-100"
-                  onClick={() => categoryField("All")}
+                  onClick={() => handleCategorySelection("All")}
                 >
                   All
                 </NavigationMenuLink>
                 <NavigationMenuLink
                   className="rounded-md px-2 py-1 hover:bg-gray-100"
-                  onClick={() => categoryField("FE")}
+                  onClick={() => handleCategorySelection("FE")}
                 >
                   Front End
                 </NavigationMenuLink>
                 <NavigationMenuLink
                   className="rounded-md px-2 py-1 hover:bg-gray-100"
-                  onClick={() => categoryField("BE")}
+                  onClick={() => handleCategorySelection("BE")}
                 >
                   Back End
                 </NavigationMenuLink>
                 <NavigationMenuLink
                   className="rounded-md px-2 py-1 hover:bg-gray-100"
-                  onClick={() => categoryField("Data")}
+                  onClick={() => handleCategorySelection("Data")}
                 >
                   Data
                 </NavigationMenuLink>
                 <NavigationMenuLink
                   className="rounded-md px-2 py-1 hover:bg-gray-100"
-                  onClick={() => categoryField("DevOps")}
+                  onClick={() => handleCategorySelection("DevOps")}
                 >
                   DevOps
                 </NavigationMenuLink>
@@ -173,7 +179,7 @@ export const SearchBooksPage = () => {
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
-          paginate={paginate}
+          paginate={(pageNumber: number) => dispatch(setPage(pageNumber))}
         />
       )}
     </div>
